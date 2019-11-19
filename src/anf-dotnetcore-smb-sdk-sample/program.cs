@@ -7,12 +7,14 @@ namespace Microsoft.Azure.Management.ANF.Samples
 {
     using System;
     using System.Collections.Generic;
+    using System.Text.Json;
     using System.Threading.Tasks;
     using Microsoft.Azure.Management.ANF.Samples.Common;
     using Microsoft.Azure.Management.NetApp;
     using Microsoft.Azure.Management.NetApp.Models;
+    using static Microsoft.Azure.Management.ANF.Samples.Common.Sdk;
     using static Microsoft.Azure.Management.ANF.Samples.Common.Utils;
-
+    
     class program
     {
         /// <summary>
@@ -39,12 +41,13 @@ namespace Microsoft.Azure.Management.ANF.Samples
             //---------------------------------------------------------------------------------------------------------------------
             // Setting variables necessary for resources creation - change these to appropriated values related to your environment
             //---------------------------------------------------------------------------------------------------------------------
-            string subscriptionId = "<subscription Id>";
-            string location = "eastus2";
+            bool cleanup = false;
+            string subscriptionId = "<subscription id>";
+            string location = "eastus";
             string resourceGroupName = "anf01-rg";
-            string vnetName = "vnet-02";
+            string vnetName = "vnet";
             string subnetName = "anf-sn";
-            string vnetResourceGroupName = "anf01-rg";
+            string vnetResourceGroupName = "vnet-rg";
             string anfAccountName = "anfaccount99";
             string capacityPoolName = "Pool01";
             string capacityPoolServiceLevel = "Standard";
@@ -86,153 +89,126 @@ namespace Microsoft.Azure.Management.ANF.Samples
             //----------------------
             // Creating ANF Account
             //----------------------
-
-            // Setting up Active Directories Object
-            // Despite of this being a list, currently ANF accepts only one Active Directory object and only one Active Directory should exist per subscription.
-            List<ActiveDirectory> activeDirectories = new List<ActiveDirectory>()
+            NetAppAccount anfAccount = await GetResourceAsync<NetAppAccount>(anfClient, resourceGroupName, anfAccountName);
+            if (anfAccount == null)
             {
-                new ActiveDirectory()
+                // Setting up Active Directories Object
+                // Despite of this being a list, currently ANF accepts only one Active Directory object and only one Active Directory should exist per subscription.
+                List<ActiveDirectory> activeDirectories = new List<ActiveDirectory>()
                 {
-                    Dns = dnsList,
-                    Domain = adFQDN,
-                    Username = domainJoinUsername,
-                    Password = DomainJoinUserPassword,
-                    SmbServerName = smbServerNamePrefix
-                }
-            };
+                    new ActiveDirectory()
+                    {
+                        Dns = dnsList,
+                        Domain = adFQDN,
+                        Username = domainJoinUsername,
+                        Password = DomainJoinUserPassword,
+                        SmbServerName = smbServerNamePrefix
+                    }
+                };
 
-            // Setting up NetApp Files account body  object
-            NetAppAccount anfAccountBody = new NetAppAccount()
+                // Setting up NetApp Files account body  object
+                NetAppAccount anfAccountBody = new NetAppAccount()
+                {
+                    Location = location.ToLower(), // Important: location needs to be lower case,
+                    ActiveDirectories = activeDirectories
+                };
+
+                // Requesting account to be created
+                WriteConsoleMessage("Creating account...");
+                anfAccount = await anfClient.Accounts.CreateOrUpdateAsync(anfAccountBody, resourceGroupName, anfAccountName);
+            }
+            else
             {
-                Location = location,
-                ActiveDirectories = activeDirectories
-            };
-
-            // Requesting account to be created
-            WriteConsoleMessage("Requesting account to be created...");
-            var anfAccount = await anfClient.Accounts.CreateOrUpdateAsync(anfAccountBody, resourceGroupName, anfAccountName);
+                WriteConsoleMessage("Account already exists...");
+            }
             WriteConsoleMessage($"\tAccount Resource Id: {anfAccount.Id}");
 
             //-----------------------
             // Creating Capacity Pool
             //-----------------------
-
-            // Setting up capacity pool body  object
-            CapacityPool capacityPoolBody = new CapacityPool()
+            CapacityPool capacityPool = await GetResourceAsync<CapacityPool>(anfClient, resourceGroupName, anfAccountName, capacityPoolName);
+            if (capacityPool == null)
             {
-                Location = location.ToLower(), // Important: location needs to be lower case
-                ServiceLevel = capacityPoolServiceLevel,
-                Size = capacitypoolSize
-            };
+                // Setting up capacity pool body  object
+                CapacityPool capacityPoolBody = new CapacityPool()
+                {
+                    Location = location.ToLower(),
+                    ServiceLevel = capacityPoolServiceLevel,
+                    Size = capacitypoolSize
+                };
 
-            // Creating capacity pool
-            WriteConsoleMessage("Requesting capacity pool to be created...");
-            var capacityPool = await anfClient.Pools.CreateOrUpdateAsync(capacityPoolBody, resourceGroupName, anfAccount.Name, capacityPoolName);
+                // Creating capacity pool
+                WriteConsoleMessage("Creating capacity pool...");
+                capacityPool = await anfClient.Pools.CreateOrUpdateAsync(capacityPoolBody, resourceGroupName, anfAccount.Name, capacityPoolName);
+            }
+            else
+            {
+                WriteConsoleMessage("Capacity pool already exists...");
+            }
             WriteConsoleMessage($"\tCapacity Pool Resource Id: {capacityPool.Id}");
 
             //------------------------
             // Creating SMB Volume
             //------------------------
-
-            // Creating volume body object
-            string subnetId = $"/subscriptions/{subscriptionId}/resourceGroups/{vnetResourceGroupName}/providers/Microsoft.Network/virtualNetworks/{vnetName}/subnets/{subnetName}";
             string volumeName = $"Vol-{anfAccountName}-{capacityPoolName}";
 
-            Volume volumeBody = new Volume()
+            Volume volume = await GetResourceAsync<Volume>(anfClient, resourceGroupName, anfAccountName, ResourceUriUtils.GetAnfCapacityPool(capacityPool.Id), volumeName);
+            if (volume == null)
             {
-                Location = location.ToLower(),
-                ServiceLevel = capacityPoolServiceLevel,
-                CreationToken = volumeName,
-                SubnetId = subnetId,
-                UsageThreshold = volumeSize,
-                ProtocolTypes = new List<string>() { "CIFS" }
-            };
+                string subnetId = $"/subscriptions/{subscriptionId}/resourceGroups/{vnetResourceGroupName}/providers/Microsoft.Network/virtualNetworks/{vnetName}/subnets/{subnetName}";
 
-            // Creating SMB volume
-            // Please notice that the SMB Server gets created at this point by using information stored in ANF Account resource about Active Directory
-            WriteConsoleMessage("Requesting volume to be created...");
-            var volume = await anfClient.Volumes.CreateOrUpdateAsync(volumeBody, resourceGroupName, anfAccount.Name, ResourceUriUtils.GetAnfCapacityPool(capacityPool.Id), volumeName);
+                // Creating volume body object
+                Volume volumeBody = new Volume()
+                {
+                    Location = location.ToLower(),
+                    ServiceLevel = capacityPoolServiceLevel,
+                    CreationToken = volumeName,
+                    SubnetId = subnetId,
+                    UsageThreshold = volumeSize,
+                    ProtocolTypes = new List<string>() { "CIFS" } // Despite of this being a list, only one protocol is supported at this time
+                };
+
+                // Creating SMB volume
+                // Please notice that the SMB Server gets created at this point by using information stored in ANF Account resource about Active Directory
+                WriteConsoleMessage("Creating volume...");
+                volume = await anfClient.Volumes.CreateOrUpdateAsync(volumeBody, resourceGroupName, anfAccount.Name, ResourceUriUtils.GetAnfCapacityPool(capacityPool.Id), volumeName);
+            }
+            else
+            {
+                WriteConsoleMessage("Volume already exists...");
+            }
             WriteConsoleMessage($"\tVolume Resource Id: {volume.Id}");
 
             // Outputs SMB Server Name
-            WriteConsoleMessage($"====> SMB Server FQDN: {volume.MountTargets}");
-
+            var jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true,
+            };
+            List<MountTarget> smbMountTarget = JsonSerializer.Deserialize<List<MountTarget>>(volume.MountTargets.ToString(), jsonOptions);
+            WriteConsoleMessage($"\t====> SMB Server FQDN: {smbMountTarget[0].SmbServerFqdn}");
 
             //------------------------
             // Cleaning up
             //------------------------
-            //WriteConsoleMessage("Cleaning up created resources...");
-
-            //WriteConsoleMessage("\tDeleting volume...");
-            //await anfClient.Volumes.DeleteAsync(resourceGroupName, anfAccount.Name, ResourceUriUtils.GetAnfCapacityPool(capacityPool.Id), ResourceUriUtils.GetAnfVolume(volume.Id));
-            //// Adding a final verification if the resource completed deletion since it may have a few secs between ARM the Resource Provider be fully in sync
-            //await WaitForNoAnfResource<Volume>(anfClient, volume.Id);
-            //Utils.WriteConsoleMessage($"\t\tDeleted volume: {volume.Id}");
-
-            //WriteConsoleMessage("\tDeleting capacity pool...");
-            //await anfClient.Pools.DeleteAsync(resourceGroupName, anfAccount.Name, ResourceUriUtils.GetAnfCapacityPool(capacityPool.Id));
-            //await WaitForNoAnfResource<CapacityPool>(anfClient, capacityPool.Id);
-            //Utils.WriteConsoleMessage($"\t\tDeleted capacity pool: {capacityPool.Id}");
-
-            //WriteConsoleMessage("\tDeleting account...");
-            //await anfClient.Accounts.DeleteAsync(resourceGroupName, anfAccount.Name);
-            //await WaitForNoAnfResource<NetAppAccount>(anfClient, anfAccount.Id);
-            //Utils.WriteConsoleMessage($"\t\tDeleted account: {anfAccount.Id}");
-        }
-
-        /// <summary>
-        /// Function used to wait for a specific ANF resource complete its deletion and ARM caching gets cleared
-        /// </summary>
-        /// <typeparam name="T">Resource Types as Snapshot, Volume, CapacityPool, and NetAppAccount</typeparam>
-        /// <param name="client">ANF Client</param>
-        /// <param name="resourceId">Resource Id of the resource being waited for being deleted</param>
-        /// <param name="intervalInSec">Time in seconds that the sample will poll to check if the resource got deleted or not. Defaults to 10 seconds.</param>
-        /// <param name="retries">How many retries before exting the wait for no resource function. Defaults to 60 retries.</param>
-        /// <returns></returns>
-        static private async Task WaitForNoAnfResource<T>(AzureNetAppFilesManagementClient client, string resourceId, int intervalInSec = 10, int retries = 60)
-        {
-            for (int i=0; i < retries; i++)
+            if (cleanup)
             {
-                System.Threading.Thread.Sleep(TimeSpan.FromSeconds(intervalInSec));
+                WriteConsoleMessage("Cleaning up created resources...");
 
-                try
-                {
-                    if (typeof(T) == typeof(Snapshot))
-                    {
-                        var resource = await client.Snapshots.GetAsync(ResourceUriUtils.GetResourceGroup(resourceId),
-                            ResourceUriUtils.GetAnfAccount(resourceId),
-                            ResourceUriUtils.GetAnfCapacityPool(resourceId),
-                            ResourceUriUtils.GetAnfVolume(resourceId),
-                            ResourceUriUtils.GetAnfSnapshot(resourceId));
-                    }
-                    else if (typeof(T) == typeof(Volume))
-                    {
-                        var resource = await client.Volumes.GetAsync(ResourceUriUtils.GetResourceGroup(resourceId),
-                            ResourceUriUtils.GetAnfAccount(resourceId),
-                            ResourceUriUtils.GetAnfCapacityPool(resourceId),
-                            ResourceUriUtils.GetAnfVolume(resourceId));
-                    }
-                    else if (typeof(T) == typeof(CapacityPool))
-                    {
-                        var resource = await client.Pools.GetAsync(ResourceUriUtils.GetResourceGroup(resourceId),
-                            ResourceUriUtils.GetAnfAccount(resourceId),
-                            ResourceUriUtils.GetAnfCapacityPool(resourceId));
-                    }
-                    else if (typeof(T) == typeof(NetAppAccount))
-                    {
-                        var resource = await client.Accounts.GetAsync(ResourceUriUtils.GetResourceGroup(resourceId),
-                            ResourceUriUtils.GetAnfAccount(resourceId));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // The following HResult is thrown if no resource is found
-                    if (ex.HResult == -2146233088)
-                    {
-                        break;
-                    }
-                    throw;
-                }
+                WriteConsoleMessage("\tDeleting volume...");
+                await anfClient.Volumes.DeleteAsync(resourceGroupName, anfAccount.Name, ResourceUriUtils.GetAnfCapacityPool(capacityPool.Id), ResourceUriUtils.GetAnfVolume(volume.Id));
+                // Adding a final verification if the resource completed deletion since it may have a few secs between ARM the Resource Provider be fully in sync
+                await WaitForNoAnfResource<Volume>(anfClient, volume.Id);
+                Utils.WriteConsoleMessage($"\t\tDeleted volume: {volume.Id}");
+
+                WriteConsoleMessage("\tDeleting capacity pool...");
+                await anfClient.Pools.DeleteAsync(resourceGroupName, anfAccount.Name, ResourceUriUtils.GetAnfCapacityPool(capacityPool.Id));
+                await WaitForNoAnfResource<CapacityPool>(anfClient, capacityPool.Id);
+                Utils.WriteConsoleMessage($"\t\tDeleted capacity pool: {capacityPool.Id}");
+
+                WriteConsoleMessage("\tDeleting account...");
+                await anfClient.Accounts.DeleteAsync(resourceGroupName, anfAccount.Name);
+                await WaitForNoAnfResource<NetAppAccount>(anfClient, anfAccount.Id);
+                Utils.WriteConsoleMessage($"\t\tDeleted account: {anfAccount.Id}");
             }
         }
     }
