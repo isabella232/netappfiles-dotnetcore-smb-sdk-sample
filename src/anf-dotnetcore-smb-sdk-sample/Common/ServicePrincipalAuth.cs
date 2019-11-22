@@ -7,11 +7,11 @@ namespace Microsoft.Azure.Management.ANF.Samples.Common
 {
     using System;
     using System.IO;
+    using System.Text.Json;
     using System.Threading.Tasks;
     using Microsoft.Azure.Management.ANF.Samples.Model;
     using Microsoft.Rest;
     using Microsoft.Rest.Azure.Authentication;
-    using System.Text.Json;
 
     /// <summary>
     /// Contains public methods to get configuration settigns, to initiate authentication, output error results, etc.
