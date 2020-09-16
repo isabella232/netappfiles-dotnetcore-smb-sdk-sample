@@ -42,23 +42,23 @@ namespace Microsoft.Azure.Management.ANF.Samples
             // Setting variables necessary for resources creation - change these to appropriated values related to your environment
             //---------------------------------------------------------------------------------------------------------------------
             bool cleanup = false;
-            string subscriptionId = "<subscription id>";
-            string location = "eastus";
-            string resourceGroupName = "anf01-rg";
-            string vnetName = "vnet";
-            string subnetName = "anf-sn";
-            string vnetResourceGroupName = "vnet-rg";
-            string anfAccountName = "anfaccount99";
-            string capacityPoolName = "Pool01";
-            string capacityPoolServiceLevel = "Standard";
+            string subscriptionId = "[Subscription Id]";
+            string location = "[Location]";
+            string resourceGroupName = "[Resource group name where ANF resources will be created]";
+            string vnetName = "[Existing Vnet Name]";
+            string subnetName = "[Existing Subnet where ANF volumes will be created]";
+            string vnetResourceGroupName = "[Vnet Resource Group Name]";
+            string anfAccountName = "[ANF Account Name]";
+            string capacityPoolName = "[ANF Capacity Pool Name]";
+            string capacityPoolServiceLevel = "Standard"; // Valid service levels are: Standard, Premium and Ultra
             long capacitypoolSize = 4398046511104;  // 4TiB which is minimum size
             long volumeSize = 107374182400;  // 100GiB - volume minimum size
 
             // SMB/CIFS related variables
-            string domainJoinUsername = "pmcadmin";
-            string dnsList = "10.0.2.4,10.0.2.5"; // Please notice that this is a comma-separated string
-            string adFQDN = "testdomain.local";
-            string smbServerNamePrefix = "pmcsmb"; // this needs to be maximum 10 characters in length and during the domain join process a random string gets appended.
+            string domainJoinUsername = "[Domain user with permissions to create computer accounts]";
+            string dnsList = "[DNS Ip Address]"; // Please notice that this is a comma-separated string
+            string adFQDN = "[Active Directory FQDN]";
+            string smbServerNamePrefix = "[SMB Server Name Prefix]"; // this needs to be maximum 10 characters in length and during the domain join process a random string gets appended.
 
             //------------------------------------------------------------------------------------------------------
             // Getting Active Directory Identity's password (from identity that has rights to domain join computers) 
@@ -179,13 +179,8 @@ namespace Microsoft.Azure.Management.ANF.Samples
             }
             WriteConsoleMessage($"\tVolume Resource Id: {volume.Id}");
 
-            // Outputs SMB Server Name
-            var jsonOptions = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-            };
-            List<MountTarget> smbMountTarget = JsonSerializer.Deserialize<List<MountTarget>>(volume.MountTargets.ToString(), jsonOptions);
-            WriteConsoleMessage($"\t====> SMB Server FQDN: {smbMountTarget[0].SmbServerFqdn}");
+            //// Outputs SMB Server Name
+            WriteConsoleMessage($"\t====> SMB Server FQDN: {volume.MountTargets[0].SmbServerFqdn}");
 
             //------------------------
             // Cleaning up
