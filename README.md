@@ -108,4 +108,3 @@ Sample output<a name="SampleOutput"></a>
 * [Azure Cloud Shell](https://docs.microsoft.com/en-us/azure/cloud-shell/quickstart)
 * [Azure NetApp Files documentation](https://docs.microsoft.com/en-us/azure/azure-netapp-files/)
 * [Download Azure SDKs](https://azure.microsoft.com/downloads/)
-
